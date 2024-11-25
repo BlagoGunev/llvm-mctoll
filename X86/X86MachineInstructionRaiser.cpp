@@ -18,6 +18,7 @@
 #include "X86ModuleRaiser.h"
 #include "X86RaisedValueTracker.h"
 #include "X86RegisterUtils.h"
+#include "X86ValueSetAnalysis.h"
 #include "llvm-mctoll.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SmallVector.h"
@@ -61,6 +62,7 @@ X86MachineInstructionRaiser::X86MachineInstructionRaiser(MachineFunction &MF,
     FPUStack.Regs[Idx] = nullptr;
 
   raisedValues = nullptr;
+  valueSetAnalysis = nullptr;
 }
 
 bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &MI) {
@@ -5590,6 +5592,9 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
 
   // Initialize the raised value tracking mechanism.
   raisedValues = new X86RaisedValueTracker(this);
+
+  // Initialize the value set analysis class.
+  valueSetAnalysis = new X86ValueSetAnalysis(this);
 
   Value *Zero64BitValue =
       ConstantInt::get(Type::getInt64Ty(Ctx), 0, false /* isSigned */);

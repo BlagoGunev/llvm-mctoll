@@ -19,6 +19,7 @@ add_llvm_library(mctollX86Raiser
   X86RaisedValueTracker.cpp
   X86RegisterUtils.cpp
   X86FuncPrototypeDiscovery.cpp
+  X86ValueSetAnalysis.cpp
 
   LINK_COMPONENTS
   Analysis

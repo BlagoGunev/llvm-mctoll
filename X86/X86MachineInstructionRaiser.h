@@ -31,6 +31,9 @@ namespace mctoll {
 // Forward declaration of X86RaisedValueTracker
 class X86RaisedValueTracker;
 
+// vsa
+class X86ValueSetAnalysis;
+
 // Type alias for Map of MBBNo -> BasicBlock * used to keep track of
 // MachineBasicBlock and corresponding raised BasicBlock
 using MBBNumToBBMap = std::map<unsigned int, BasicBlock *>;
@@ -76,6 +79,8 @@ public:
 
 private:
   X86RaisedValueTracker *raisedValues;
+
+  X86ValueSetAnalysis *valueSetAnalysis;
 
   // Set of reaching definitions that were not promoted during since defining
   // block is not yet raised and need to be promoted upon raising all blocks.
