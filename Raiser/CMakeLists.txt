@@ -12,6 +12,7 @@ add_llvm_library(mctollRaiser
   MCInstOrData.cpp
   MCInstRaiser.cpp
   ModuleRaiser.cpp
+  ReducedIntervalCongruence.cpp
   RuntimeFunction.cpp
 
   DEPENDS
