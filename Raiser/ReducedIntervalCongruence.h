@@ -15,14 +15,16 @@
 #define LLVM_TOOLS_LLVM_MCTOLL_REDUCEDINTERVALCONGRUENCE_H
 
 #include <cstdint>
+#include <memory>
+#include <limits>
 
 namespace llvm {
 namespace mctoll {
     
+enum class BoundState { SET, NEG_INF, INF, UNSURE };
+
 class ReducedIntervalCongruence {
 private:
-    enum class BoundState { SET, NEG_INF, INF, UNSURE };
-
     uint64_t Alignment;
     int64_t IndexLowerBound;
     int64_t IndexUpperBound;
@@ -30,6 +32,13 @@ private:
 
     BoundState LowerBoundState;
     BoundState UpperBoundState;
+
+    inline bool isLowerBoundSet() {
+        return LowerBoundState == BoundState::SET;
+    }
+    inline bool isUpperBoundSet() {
+        return UpperBoundState == BoundState::SET;
+    }
 
 public:
     ReducedIntervalCongruence();
@@ -41,12 +50,30 @@ public:
     
     bool containsValue(int64_t value);
     bool isSubsetOf(ReducedIntervalCongruence &ric);
-    bool intersectionRIC(ReducedIntervalCongruence &ric);
+    bool intersectRIC(ReducedIntervalCongruence &ric);
     bool unionRIC(ReducedIntervalCongruence &ric);
     bool widenRIC(ReducedIntervalCongruence &ric);
-    bool adjustedRIC(int64_t value);
+    bool adjustRIC(int64_t value);
     bool removeLowerBounds();
     bool removeUpperBounds();
+
+    // Getters
+    uint64_t getAlignment() const { return Alignment; }
+    int64_t getIndexLowerBound() const { return IndexLowerBound; }
+    int64_t getIndexUpperBound() const { return IndexUpperBound; }
+    int64_t getOffset() const { return Offset; }
+
+    BoundState getLowerBoundState() const { return LowerBoundState; }
+    BoundState getUpperBoundState() const { return UpperBoundState; }
+
+    // Setters
+    void setAlignment(uint64_t alignment) { Alignment = alignment; }
+    void setIndexLowerBound(int64_t index) { IndexLowerBound = index; }
+    void setIndexUpperBound(int64_t index) { IndexUpperBound = index; }
+    void setOffset(int64_t offset) { Offset = offset; }
+
+    void setLowerBoundState(BoundState state) { LowerBoundState = state; }
+    void setUpperBoundState(BoundState state) { UpperBoundState = state; }
 };
 
 } // end namespace mctoll
