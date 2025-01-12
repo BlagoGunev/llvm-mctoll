@@ -273,52 +273,52 @@ bool ReducedIntervalCongruence::unionRIC(ReducedIntervalCongruence &ric) {
 
     // Lower limit set
     if (lowerLimit <= cmpLowerLimit) {
-        intersection->setLowerBoundState(LowerBoundState);
-        intersection->setOffset(Offset);
-        intersection->setIndexLowerBound(IndexLowerBound);
+        unionr->setLowerBoundState(LowerBoundState);
+        unionr->setOffset(Offset);
+        unionr->setIndexLowerBound(IndexLowerBound);
     } else {
-        intersection->setLowerBoundState(ric.getLowerBoundState());
-        intersection->setOffset(ric.getOffset());
-        intersection->setIndexLowerBound(ric.getIndexLowerBound());
+        unionr->setLowerBoundState(ric.getLowerBoundState());
+        unionr->setOffset(ric.getOffset());
+        unionr->setIndexLowerBound(ric.getIndexLowerBound());
     }
 
     int64_t actualLowerLimit = std::min(lowerLimit, cmpLowerLimit);
 
     // Upper limit set
-    if (intersection->getLowerBoundState() == BoundState::SET) {
+    if (unionr->getLowerBoundState() == BoundState::SET) {
         if (upperLimit <= cmpUpperLimit) {
             int64_t alignmentDiff = (upperLimit - actualLowerLimit) / 
-                intersection->getAlignment();
-            intersection->setUpperBoundState(UpperBoundState);
-            intersection->setIndexUpperBound(alignmentDiff + 
-                intersection->getIndexLowerBound());
+                unionr->getAlignment();
+            unionr->setUpperBoundState(UpperBoundState);
+            unionr->setIndexUpperBound(alignmentDiff + 
+                unionr->getIndexLowerBound());
         } else {
             int64_t alignmentDiff = (cmpUpperLimit - actualLowerLimit) / 
-                intersection->getAlignment();
-            intersection->setUpperBoundState(ric.getUpperBoundState());
-            intersection->setIndexUpperBound(alignmentDiff + 
-                intersection->getIndexLowerBound());
+                unionr->getAlignment();
+            unionr->setUpperBoundState(ric.getUpperBoundState());
+            unionr->setIndexUpperBound(alignmentDiff + 
+                unionr->getIndexLowerBound());
         }
     } else {
         if (upperLimit >= cmpUpperLimit) {
-            int64_t alignmentDiff = (upperLimit - intersection->getOffset()) / 
-                intersection->getAlignment();
-            intersection->setUpperBoundState(UpperBoundState);
-            intersection->setIndexUpperBound(alignmentDiff);
+            int64_t alignmentDiff = (upperLimit - unionr->getOffset()) / 
+                unionr->getAlignment();
+            unionr->setUpperBoundState(UpperBoundState);
+            unionr->setIndexUpperBound(alignmentDiff);
         } else {
-            int64_t alignmentDiff = (cmpUpperLimit - intersection->getOffset()) / 
-                intersection->getAlignment();
-            intersection->setUpperBoundState(ric.getUpperBoundState());
-            intersection->setIndexUpperBound(alignmentDiff);
+            int64_t alignmentDiff = (cmpUpperLimit - unionr->getOffset()) / 
+                unionr->getAlignment();
+            unionr->setUpperBoundState(ric.getUpperBoundState());
+            unionr->setIndexUpperBound(alignmentDiff);
         }
     }
 
-    Alignment = intersection->getAlignment();
-    IndexLowerBound = intersection->getIndexLowerBound();
-    IndexUpperBound = intersection->getIndexUpperBound();
-    Offset = intersection->getOffset();
-    LowerBoundState = intersection->getLowerBoundState();
-    UpperBoundState = intersection->getUpperBoundState();
+    Alignment = unionr->getAlignment();
+    IndexLowerBound = unionr->getIndexLowerBound();
+    IndexUpperBound = unionr->getIndexUpperBound();
+    Offset = unionr->getOffset();
+    LowerBoundState = unionr->getLowerBoundState();
+    UpperBoundState = unionr->getUpperBoundState();
 
     return true;
 }
