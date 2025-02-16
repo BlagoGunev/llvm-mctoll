@@ -5685,6 +5685,8 @@ bool X86MachineInstructionRaiser::raise() {
     legacy::PassManager PM;
     PM.add(createUnifyFunctionExitNodesPass());
     PM.run(*(RaisedFunction->getParent()));
+
+    valueSetAnalysis->dump();
   }
   return Success;
 }

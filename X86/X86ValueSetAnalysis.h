@@ -48,7 +48,7 @@ public:
   ValueSet *removeLowerBounds(ValueSet *vs);
   ValueSet *removeUpperBounds(ValueSet *vs);
 
-
+  void dump();
 private:
   X86MachineInstructionRaiser *X86MIRaiser;
 

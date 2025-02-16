@@ -24,3 +24,13 @@ X86ValueSetAnalysis::X86ValueSetAnalysis(
 
   fprintf(stderr, "Created VSA for func: %s\n", MIRaiser->getMF().getName().data());
 }
+
+void X86ValueSetAnalysis::dump() {
+  if (alocToVSMap.size() == 0) {
+    fprintf(stderr, "Empty value set\n");
+    return;
+  }
+  for (auto ME : alocToVSMap) {
+    fprintf(stderr, "Found an entry: \n");
+  }
+}
