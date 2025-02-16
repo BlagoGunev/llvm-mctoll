@@ -16,11 +16,11 @@
 
 #include "X86MachineInstructionRaiser.h"
 #include "ReducedIntervalCongruence.h"
+#include "AlocType.h"
 
 namespace llvm {
 namespace mctoll {
 
-using AlocType = uint32_t;
 using MemRgnType = uint32_t;
 
 using RgnRICPair = std::pair<MemRgnType, ReducedIntervalCongruence>;
