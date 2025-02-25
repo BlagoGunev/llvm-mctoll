@@ -74,10 +74,32 @@ public:
 
     void setLowerBoundState(BoundState state) { LowerBoundState = state; }
     void setUpperBoundState(BoundState state) { UpperBoundState = state; }
+
+    bool operator==(const ReducedIntervalCongruence &ric) const {
+        return ric.Alignment == Alignment && ric.IndexLowerBound == IndexLowerBound &&
+            ric.IndexUpperBound == IndexUpperBound && ric.Offset == Offset;
+    }
 };
 
 } // end namespace mctoll
 } // end namespace llvm
+
+namespace std {
+template<>
+struct hash<llvm::mctoll::ReducedIntervalCongruence>
+{
+    size_t operator()(const llvm::mctoll::ReducedIntervalCongruence& ric) const noexcept
+    {
+        size_t h1 = ric.getAlignment() << 3;
+        size_t h2 = ric.getIndexLowerBound() << 2;
+        size_t h3 = ric.getIndexUpperBound() << 1;
+        size_t h4 = ric.getOffset();
+        size_t h5 = (size_t)ric.getLowerBoundState() << 4;
+        size_t h6 = (size_t)ric.getUpperBoundState() << 5;
+        return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6;
+    }
+};
+} // end namespace std
 
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_REDUCEDINTERVALCONGRUENCE_H

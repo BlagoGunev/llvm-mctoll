@@ -47,6 +47,8 @@ public:
         return a.getAlocTypeID() == 1 && Address == a.getGlobalAddress();
       case 2:
         return a.getAlocTypeID() == 2 && Address == a.getLocalAddress();
+      default:
+        assert(false && "Invalid AlocTypeID");
     }
   }
 

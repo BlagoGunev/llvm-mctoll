@@ -458,6 +458,10 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
     if (Success)
       // Update the value mapping of DstPReg
       raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SrcValue);
+    
+    // here
+    valueSetAnalysis->assignValue(AlocType(DstPReg), AlocType(DstPReg));
+
   } break;
   case X86::CMOV16rr:
   case X86::CMOV32rr:

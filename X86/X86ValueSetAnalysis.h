@@ -17,6 +17,7 @@
 #include "X86MachineInstructionRaiser.h"
 #include "ReducedIntervalCongruence.h"
 #include "AlocType.h"
+#include "llvm/MC/MCRegisterInfo.h"
 
 namespace llvm {
 namespace mctoll {
@@ -37,6 +38,8 @@ class X86ValueSetAnalysis {
 public:
   X86ValueSetAnalysis() = delete;
   X86ValueSetAnalysis(X86MachineInstructionRaiser *);
+
+  bool assignValue(AlocType dest, AlocType src);
 
   bool containsValue(AlocType aloc, int64_t value);
   bool isSubsetOf(ValueSet *left, ValueSet *right);
@@ -59,5 +62,23 @@ private:
 
 } // end namespace mctoll
 } // end namespace llvm
+
+namespace std {
+  template<>
+  struct hash<llvm::mctoll::RgnRICPair>
+  {
+    size_t operator()(const llvm::mctoll::RgnRICPair& rrp) const noexcept
+    {
+      llvm::mctoll::ReducedIntervalCongruence ric = rrp.second;
+      size_t h1 = ric.getAlignment() << 3;
+      size_t h2 = ric.getIndexLowerBound() << 2;
+      size_t h3 = ric.getIndexUpperBound() << 1;
+      size_t h4 = ric.getOffset();
+      size_t h5 = (size_t)ric.getLowerBoundState() << 4;
+      size_t h6 = (size_t)ric.getUpperBoundState() << 5;
+      return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6 ^ (rrp.first << 7);
+    }
+  };
+  } // end namespace std
 
 #endif // LLVM_TOOLS_LLVM_MCTOLL_X86_X86VALUESETANALYSIS_H
