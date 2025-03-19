@@ -39,14 +39,15 @@ public:
   X86ValueSetAnalysis() = delete;
   X86ValueSetAnalysis(X86MachineInstructionRaiser *);
 
-  bool assignValue(AlocType dest, AlocType src);
+  bool assignValueToSrc(AlocType dest, AlocType src);
+  bool assignValueConst(AlocType dest, Value *val);
 
   bool containsValue(AlocType aloc, int64_t value);
   bool isSubsetOf(ValueSet *left, ValueSet *right);
   ValueSet *intersectionVS(ValueSet *left, ValueSet *right);
   ValueSet *unionVS(ValueSet *left, ValueSet *right);
   ValueSet *widenVS(ValueSet *left, ValueSet *right);
-  ValueSet *adjustVS(ValueSet *vs, int64_t value);
+  bool adjustVS(AlocType dest, int64_t value);
   FPSetsPair fpSets(ValueSet *vs, int64_t size);
   ValueSet *removeLowerBounds(ValueSet *vs);
   ValueSet *removeUpperBounds(ValueSet *vs);

@@ -113,6 +113,11 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &MI) {
   // Store operand at stack top (StackRef)
   new StoreInst(RegValue, StackRef, RaisedBB);
 
+  // add to vsa
+  unsigned addrSpace = MR->getModule()->getDataLayout().getAllocaAddrSpace();
+  valueSetAnalysis->assignValueToSrc(AlocType(AlocType::AlocTypeID::LocalMemLocTy, addrSpace), AlocType(MI.getOperand(0).getReg()));
+
+
   return true;
 }
 
@@ -135,6 +140,8 @@ bool X86MachineInstructionRaiser::raisePopInstruction(const MachineInstr &MI) {
       return true;
     }
 #else
+    // add to vsa
+
     return true;
 #endif
   } else {
@@ -460,7 +467,9 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
       raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SrcValue);
     
     // here
-    valueSetAnalysis->assignValue(AlocType(DstPReg), AlocType(DstPReg));
+    Register SrcPReg = MI.getOperand(Src1Index).getReg();
+    valueSetAnalysis->assignValueToSrc(AlocType(find64BitSuperReg(DstPReg)),
+         AlocType(find64BitSuperReg(SrcPReg)));
 
   } break;
   case X86::CMOV16rr:
@@ -2687,6 +2696,26 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
                                      MemRefValue);
   }
 
+  AlocType srcAloc;
+
+  if (isa<AllocaInst>(MemRefValue)) {
+    // printf("alloca\n");
+    int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
+    X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
+    srcAloc = AlocType(AlocType::LocalMemLocTy, MemRef.Disp);
+  } else if (isEffectiveAddrValue(MemRefValue)) {
+
+  } else if (isa<GlobalValue>(MemRefValue)) {
+
+  } else if (isa<SelectInst>(MemRefValue)) {
+
+  } else if (isa<GetElementPtrInst>(MemRefValue)) {
+
+  } else if (MemRefValue->getType()->isPointerTy()) {
+
+  }     
+  valueSetAnalysis->assignValueToSrc(AlocType(find64BitSuperReg(LoadPReg.id())), srcAloc);
+
   return true;
 }
 
@@ -2968,6 +2997,41 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
                                   "raising binary mem op instruction");
   // Store resultant value
   new StoreInst(SrcValue, MemRefVal, false, Align(), RaisedBB);
+
+  // vsa
+  // TODO: See if using the type of SrcValue can be used to determine
+  // if it is const assignment or register
+  // assignToConst, dest is memRefVal, src is SrcValue
+  // isa<AllocaInst>(MemRefVal) || isEffectiveAddrValue(MemRefVal) ||
+  //         isa<GlobalValue>(MemRefVal) || isa<GetElementPtrInst>(MemRefVal) ||
+  //         MemRefVal->getType()->isPointerTy()
+  AlocType destAloc = AlocType();
+  if (isa<AllocaInst>(MemRefVal)) {
+    // local
+    int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
+    X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
+    destAloc = AlocType(AlocType::LocalMemLocTy, MemRef.Disp);
+
+  } else if (isEffectiveAddrValue(MemRefVal)) {
+    // local
+  } else if (isa<GlobalValue>(MemRefVal) || isa<GetElementPtrInst>(MemRefVal) ||
+          MemRefVal->getType()->isPointerTy()) {
+    // atid = AlocType::AlocTypeID::GlobalMemLocTy;
+  } else {
+    // atid = AlocType::AlocTypeID::RegisterTy;
+  }
+
+  if (isa<Constant>(SrcValue)) {
+    // printf("%s\n", x86InstrInfo->getName(MI.getOpcode()));
+    valueSetAnalysis->assignValueConst(destAloc, SrcValue);
+  } else if (isa<Instruction>(SrcValue)) {
+    AlocType reg = AlocType(find64BitSuperReg(MI.getOperand(SrcOpIndex).getReg()));
+    // printf("Found a register MOV\n");
+    // printf("aloc type %d, aloc addr space %s\n", reg.getAlocTypeID(), x86RegisterInfo->getName(MI.getOperand(0).getReg()));
+    SrcValue->dump();
+    valueSetAnalysis->
+      assignValueToSrc(destAloc, reg);
+  }
 
   return true;
 }
@@ -4193,6 +4257,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::SF);
       AffectedEFlags.insert(EFLAGS::ZF);
       AffectedEFlags.insert(EFLAGS::PF);
+
+      valueSetAnalysis->adjustVS(AlocType(find64BitSuperReg(DstPReg)), 
+        dyn_cast<ConstantInt>(SrcOp2Value)->getSExtValue());
     } break;
     case X86::SUB32i32:
     case X86::SUB32ri:
@@ -5667,6 +5734,10 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
       } else if (!raiseMachineInstr(MI)) {
         return false;
       }
+      fprintf(stderr, "VSA at instruction: \n");
+      MI.dump();
+      valueSetAnalysis->dump();
+      fprintf(stderr, "-------------------------\n");
     }
   }
   return createFunctionStackFrame() && raiseBranchMachineInstrs() &&

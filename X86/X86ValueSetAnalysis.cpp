@@ -25,7 +25,7 @@ X86ValueSetAnalysis::X86ValueSetAnalysis(
   fprintf(stderr, "Created VSA for func: %s\n", MIRaiser->getMF().getName().data());
 }
 
-bool X86ValueSetAnalysis::assignValue(AlocType dest, AlocType src) {
+bool X86ValueSetAnalysis::assignValueToSrc(AlocType dest, AlocType src) {
   if (alocToVSMap.find(src) == alocToVSMap.end()) {
     alocToVSMap[dest] = new ValueSet;
     pair<MemRgnType, ReducedIntervalCongruence> p;
@@ -38,8 +38,43 @@ bool X86ValueSetAnalysis::assignValue(AlocType dest, AlocType src) {
   return true;
 }
 
+bool X86ValueSetAnalysis::assignValueConst(AlocType dest, Value *val) {
+  // if (alocToVSMap.find(dest)) {
+  //   free(alocToVSMap[dest]);
+  // }
+  alocToVSMap[dest] = new ValueSet;
+  RgnRICPair rrp;
+  rrp.first = 0;
+  int64_t value = 0;
+  // TODO: check what value val is, for now just cast
+  if (isa<ConstantInt>(val)) {
+    // val->getType()->print(outs());
+    value = (dyn_cast<ConstantInt>(val))->getSExtValue();
+    // printf("Found an integer type %ld\n", value);
+    // fflush(stdout);
+  }
+  // int64_t value = 3;
+  rrp.second = ReducedIntervalCongruence(1, 0, 0, value);
+  alocToVSMap[dest]->insert(rrp);
+  return true;
+}
+
+bool X86ValueSetAnalysis::adjustVS(AlocType dest, int64_t value) {
+  if (alocToVSMap.find(dest) == alocToVSMap.end()) {
+    alocToVSMap[dest] = new ValueSet;
+  }
+  ValueSet *updatedVS = new ValueSet;
+  for (const RgnRICPair &ric : *(alocToVSMap[dest])) {
+    RgnRICPair newP = ric;
+    newP.second.adjustRIC(value);
+    updatedVS->insert(newP);
+  }
+  alocToVSMap[dest] = updatedVS;
+  return true;
+}
+
 void dumpRic(const ReducedIntervalCongruence &ric) {
-  char loAddr[30], hiAddr[30];
+  char loAddr[30], hiAddr[30], offStr[30];
   switch (ric.getLowerBoundState()) {
     case BoundState::NEG_INF: 
       sprintf(loAddr, "-inf");
@@ -54,8 +89,14 @@ void dumpRic(const ReducedIntervalCongruence &ric) {
       assert(false && "Bound state incorrect");
   }
   sprintf(hiAddr, "%ld", ric.getIndexUpperBound());
+  int64_t offset = ric.getOffset();
+  if (offset < 0) {
+    sprintf(offStr, " - %ld", -offset);
+  } else {
+    sprintf(offStr, " + %ld", offset);
+  }
 
-  fprintf(stderr, "[%s, %s]", loAddr, hiAddr);
+  fprintf(stderr, "%lu*[%s, %s]%s", ric.getAlignment(), loAddr, hiAddr, offStr);
 }
 
 void X86ValueSetAnalysis::dump() {
@@ -63,12 +104,15 @@ void X86ValueSetAnalysis::dump() {
     fprintf(stderr, "Empty value set\n");
     return;
   }
+  fprintf(stderr, "Dumping VSA: \n");
   for (auto ME : alocToVSMap) {
     fprintf(stderr, "\t");
     if (ME.first.isRegisterType()) {
       fprintf(stderr, "%s -> ", X86MIRaiser->getModuleRaiser()->getMCRegisterInfo()->getName(ME.first.getRegister()));
+    } else if (ME.first.isLocalMemLocType()){
+      fprintf(stderr, "mem %lu -> ", ME.first.getLocalAddress());
     } else {
-      fprintf(stderr, "%" PRIu64 "\n", ME.first.getGlobalAddress());
+      fprintf(stderr, "global %lu -> ", ME.first.getGlobalAddress());
     }
     for (auto ric : *ME.second) {
       dumpRic(ric.second);

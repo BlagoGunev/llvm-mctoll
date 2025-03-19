@@ -6,7 +6,8 @@ using namespace llvm;
 using namespace llvm::mctoll;
 
 AlocType::AlocType(const MCRegister &Reg) {
-    new (&Register) MCRegister(Reg.id());
+    ID = AlocType::RegisterTy;
+    Register = MCRegister(Reg.id());
 }
   
 AlocType::AlocType(const AlocTypeID cID, const uint64_t cAddress) {

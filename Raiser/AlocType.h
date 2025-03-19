@@ -25,7 +25,7 @@ private:
 
 public: 
 
-  AlocType() = delete;
+  AlocType() {};
   AlocType(const MCRegister &Reg);
   AlocType(const AlocTypeID ID, const uint64_t Address);
 
