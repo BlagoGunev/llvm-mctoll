@@ -323,6 +323,7 @@ bool X86MachineInstructionRaiser::raiseMoveImmToRegMachineInstr(
     // Update the value mapping of DstReg
     raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
                                      SrcValue);
+    valueSetAnalysis->assignValueConst(AlocType(DstPReg), SrcValue);
     Success = true;
   } break;
   default:
@@ -791,6 +792,30 @@ bool X86MachineInstructionRaiser::raiseLEAMachineInstr(const MachineInstr &MI) {
   // Update the value mapping of DestReg
   raisedValues->setPhysRegSSAValue(DestReg, MI.getParent()->getNumber(),
                                    EffectiveAddrValue);
+
+  // Update the value set of the temp aloc to preserve value during operations
+  AlocType tempAloc = AlocType(Register(X86::NoRegister));
+  X86AddressMode addressMode = llvm::getAddressFromInstr(&MI, getMemoryRefOpIndex(MI));
+  
+  valueSetAnalysis->assignZeroRic(tempAloc);
+  if (addressMode.Disp != 0) {
+    valueSetAnalysis->adjustVS(tempAloc, addressMode.Disp);
+  }
+
+  if (addressMode.Base.Reg != X86::NoRegister) {
+    valueSetAnalysis->addValueWithSrc(tempAloc, 
+      AlocType(find64BitSuperReg(addressMode.Base.Reg)));
+  }
+
+  if (addressMode.IndexReg != X86::NoRegister) {
+    valueSetAnalysis->addValueWithSrcTimes(tempAloc, 
+      AlocType(find64BitSuperReg(addressMode.IndexReg)), 
+      addressMode.Scale);
+  }
+
+  AlocType destAloc = AlocType(find64BitSuperReg(DestReg));
+  valueSetAnalysis->assignValueToSrc(destAloc, tempAloc);
+
   return true;
 }
 
@@ -1107,6 +1132,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       // Set PF knowing that the value is 0, since 0 has
       // an even number of bits set, namely, zero
       raisedValues->setEflagBoolean(EFLAGS::PF, MBBNo, true);
+
+      valueSetAnalysis->xorValueWithSrc(AlocType(find64BitSuperReg(DstReg)), 
+        AlocType(find64BitSuperReg(DstReg)));
     } else {
       Value *Src1Value = ExplicitSrcValues.at(0);
       Value *Src2Value = ExplicitSrcValues.at(1);
@@ -2697,24 +2725,42 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
   }
 
   AlocType srcAloc;
+  bool alocInitialized = false;
 
   if (isa<AllocaInst>(MemRefValue)) {
-    // printf("alloca\n");
+    // allocate on stack
     int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
     X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
     srcAloc = AlocType(AlocType::LocalMemLocTy, MemRef.Disp);
+    alocInitialized = true;
   } else if (isEffectiveAddrValue(MemRefValue)) {
-
+    // Effective address
   } else if (isa<GlobalValue>(MemRefValue)) {
-
+    // Global value
+    int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
+    X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
+    srcAloc = AlocType(AlocType::GlobalMemLocTy, MemRef.Disp);
+    // init global variable before accessing it for the first time
+    GlobalVariable *gvar = dyn_cast<GlobalVariable>(MemRefValue);
+    if (gvar->isConstant()) {
+      // Check if constant values always have initializer
+      ConstantInt *intValue = dyn_cast<ConstantInt>(gvar->getInitializer());
+      valueSetAnalysis->tryInsertValue(srcAloc, intValue->getSExtValue());
+    }
+    alocInitialized = true;
   } else if (isa<SelectInst>(MemRefValue)) {
-
+    printf("select\n");
   } else if (isa<GetElementPtrInst>(MemRefValue)) {
+    printf("getelementptr\n");
 
   } else if (MemRefValue->getType()->isPointerTy()) {
-
-  }     
-  valueSetAnalysis->assignValueToSrc(AlocType(find64BitSuperReg(LoadPReg.id())), srcAloc);
+    printf("ptr\n");
+    // Find a way to link the ptr to the value
+  } 
+  
+  if (alocInitialized) {
+    valueSetAnalysis->assignValueToSrc(AlocType(find64BitSuperReg(LoadPReg)), srcAloc);
+  }
 
   return true;
 }
@@ -3006,31 +3052,37 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   //         isa<GlobalValue>(MemRefVal) || isa<GetElementPtrInst>(MemRefVal) ||
   //         MemRefVal->getType()->isPointerTy()
   AlocType destAloc = AlocType();
+  bool alocInitialized = false;
   if (isa<AllocaInst>(MemRefVal)) {
     // local
     int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
     X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
     destAloc = AlocType(AlocType::LocalMemLocTy, MemRef.Disp);
-
+    alocInitialized = true;
   } else if (isEffectiveAddrValue(MemRefVal)) {
     // local
   } else if (isa<GlobalValue>(MemRefVal) || isa<GetElementPtrInst>(MemRefVal) ||
           MemRefVal->getType()->isPointerTy()) {
     // atid = AlocType::AlocTypeID::GlobalMemLocTy;
+    printf("move to ptr\n");
+    int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
+    X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
+    destAloc = AlocType(AlocType::GlobalMemLocTy, MemRef.Disp);
+    alocInitialized = true;
   } else {
     // atid = AlocType::AlocTypeID::RegisterTy;
   }
 
-  if (isa<Constant>(SrcValue)) {
-    // printf("%s\n", x86InstrInfo->getName(MI.getOpcode()));
-    valueSetAnalysis->assignValueConst(destAloc, SrcValue);
-  } else if (isa<Instruction>(SrcValue)) {
-    AlocType reg = AlocType(find64BitSuperReg(MI.getOperand(SrcOpIndex).getReg()));
-    // printf("Found a register MOV\n");
-    // printf("aloc type %d, aloc addr space %s\n", reg.getAlocTypeID(), x86RegisterInfo->getName(MI.getOperand(0).getReg()));
-    SrcValue->dump();
-    valueSetAnalysis->
-      assignValueToSrc(destAloc, reg);
+  if (alocInitialized) {
+    if (SrcOp.isImm()) {
+      valueSetAnalysis->assignValueConst(destAloc, SrcValue);
+    } else {
+      AlocType reg = AlocType(find64BitSuperReg(MI.getOperand(SrcOpIndex).getReg()));
+      // printf("Found a register MOV\n");
+      // printf("aloc type %d, aloc addr space %s\n", reg.getAlocTypeID(), x86RegisterInfo->getName(MI.getOperand(0).getReg()));
+      // SrcValue->dump();
+      valueSetAnalysis->assignValueToSrc(destAloc, reg);
+    }
   }
 
   return true;

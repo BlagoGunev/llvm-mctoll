@@ -39,8 +39,15 @@ public:
   X86ValueSetAnalysis() = delete;
   X86ValueSetAnalysis(X86MachineInstructionRaiser *);
 
+  bool tryInsertValue(AlocType dest, int64_t value);
+
   bool assignValueToSrc(AlocType dest, AlocType src);
   bool assignValueConst(AlocType dest, Value *val);
+  void assignZeroRic(AlocType dest);
+  
+  bool addValueWithSrc(AlocType dest, AlocType src);
+  bool addValueWithSrcTimes(AlocType dest, AlocType src, int64_t times);
+  bool xorValueWithSrc(AlocType dest, AlocType src);
 
   bool containsValue(AlocType aloc, int64_t value);
   bool isSubsetOf(ValueSet *left, ValueSet *right);
@@ -56,8 +63,7 @@ public:
 private:
   X86MachineInstructionRaiser *X86MIRaiser;
 
-  AlocToVSMap alocToVSMap;
-  
+  AlocToVSMap alocToVSMap;  
 };
 
 

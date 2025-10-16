@@ -57,6 +57,8 @@ public:
     bool removeLowerBounds();
     bool removeUpperBounds();
 
+    bool multiplyRIC(int64_t times);
+
     // Getters
     uint64_t getAlignment() const { return Alignment; }
     int64_t getIndexLowerBound() const { return IndexLowerBound; }

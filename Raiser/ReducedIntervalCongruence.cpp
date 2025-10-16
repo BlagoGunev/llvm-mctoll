@@ -332,6 +332,13 @@ bool ReducedIntervalCongruence::adjustRIC(int64_t value) {
     return true;
 }
 
+bool ReducedIntervalCongruence::multiplyRIC(int64_t times) {
+    Offset *= times;
+    IndexLowerBound *= times;
+    IndexUpperBound *= times;
+    return true;
+}
+
 bool ReducedIntervalCongruence::removeLowerBounds() {
     LowerBoundState = BoundState::NEG_INF;
     return true;

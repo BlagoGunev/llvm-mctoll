@@ -25,13 +25,31 @@ X86ValueSetAnalysis::X86ValueSetAnalysis(
   fprintf(stderr, "Created VSA for func: %s\n", MIRaiser->getMF().getName().data());
 }
 
+void X86ValueSetAnalysis::assignZeroRic(AlocType dest) {
+  alocToVSMap[dest] = new ValueSet;
+  pair<MemRgnType, ReducedIntervalCongruence> p;
+  p.first = 0;
+  p.second = ReducedIntervalCongruence();
+  alocToVSMap[dest]->insert(p);
+}
+
+bool X86ValueSetAnalysis::tryInsertValue(AlocType dest, int64_t value) {
+  if (alocToVSMap.find(dest) != alocToVSMap.end()) {
+    printf("Not inserted\n");
+    return false;
+  }
+  printf("Inserted\n");
+  alocToVSMap[dest] = new ValueSet;
+  pair<MemRgnType, ReducedIntervalCongruence> p;
+  p.first = 0;
+  p.second = ReducedIntervalCongruence(1, 0, 0, value);
+  alocToVSMap[dest]->insert(p);
+  return true;
+}
+
 bool X86ValueSetAnalysis::assignValueToSrc(AlocType dest, AlocType src) {
   if (alocToVSMap.find(src) == alocToVSMap.end()) {
-    alocToVSMap[dest] = new ValueSet;
-    pair<MemRgnType, ReducedIntervalCongruence> p;
-    p.first = 0;
-    p.second = ReducedIntervalCongruence();
-    alocToVSMap[dest]->insert(p);
+    assignZeroRic(dest);
     return true;
   }
   alocToVSMap[dest] = alocToVSMap[src];
@@ -57,6 +75,77 @@ bool X86ValueSetAnalysis::assignValueConst(AlocType dest, Value *val) {
   rrp.second = ReducedIntervalCongruence(1, 0, 0, value);
   alocToVSMap[dest]->insert(rrp);
   return true;
+}
+
+bool X86ValueSetAnalysis::addValueWithSrc(AlocType dest, AlocType src) {
+  return addValueWithSrcTimes(dest, src, 1);
+}
+
+ReducedIntervalCongruence addRics(const ReducedIntervalCongruence &a, 
+  const ReducedIntervalCongruence &b) {
+
+  ReducedIntervalCongruence result;
+  // result.setIndexLowerBound(a.getIndexLowerBound() + b.getIn)
+  return result;
+}
+
+ValueSet *crossValueSets(ValueSet *dest, ValueSet *src) {
+  ValueSet *newSet = new ValueSet;
+  for (auto oldRicP : *dest) {
+    for (auto srcRicP : *src) {
+      RgnRICPair newPair;
+      newPair.first = oldRicP.first;
+      const ReducedIntervalCongruence oldRic = oldRicP.second;
+      newPair.second = ReducedIntervalCongruence(oldRic.getAlignment(), 
+        oldRic.getIndexLowerBound(), oldRic.getIndexUpperBound(), 
+        oldRic.getOffset() + srcRicP.second.getOffset(),
+        oldRic.getLowerBoundState(), oldRic.getUpperBoundState());
+      newSet->insert(newPair);
+    }
+  }
+  return newSet;
+}
+  
+bool X86ValueSetAnalysis::addValueWithSrcTimes(AlocType dest, AlocType src, int64_t times) {
+  if (alocToVSMap.find(dest) == alocToVSMap.end()) {
+    assignZeroRic(dest);
+  }
+
+  if (times == 0) {
+    return true;
+  }
+
+  if (alocToVSMap.find(src) == alocToVSMap.end()) {
+    return false;
+  }
+  
+  // This is a very early implementation, assumes that src is const
+  if (times == 1) {
+    alocToVSMap[dest] = crossValueSets(alocToVSMap[dest], alocToVSMap[src]);
+    return true;
+  } else {
+    ValueSet *mult = new ValueSet;
+    for (auto p : *alocToVSMap[src]) {
+      RgnRICPair cp;
+      cp.first = p.first;
+      cp.second = p.second;
+      cp.second.multiplyRIC(times);
+      mult->insert(cp);
+    }
+    alocToVSMap[dest] = crossValueSets(alocToVSMap[dest], mult);
+    delete mult;
+    return true;
+  }
+  return true;
+}
+
+bool X86ValueSetAnalysis::xorValueWithSrc(AlocType dest, AlocType src) {
+  // Currently only implement the XOR with self
+  if (dest == src) {
+    assignZeroRic(dest);
+    return true;
+  }
+  return false;
 }
 
 bool X86ValueSetAnalysis::adjustVS(AlocType dest, int64_t value) {
