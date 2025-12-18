@@ -113,10 +113,9 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &MI) {
   // Store operand at stack top (StackRef)
   new StoreInst(RegValue, StackRef, RaisedBB);
 
-  // add to vsa
+  // TODO: Make memory ref relative to stack top
   unsigned addrSpace = MR->getModule()->getDataLayout().getAllocaAddrSpace();
-  valueSetAnalysis->assignValueToSrc(AlocType(AlocType::AlocTypeID::LocalMemLocTy, addrSpace), AlocType(MI.getOperand(0).getReg()));
-
+  valueSetAnalysis->assignValueToSrc(AlocType(AlocType::AlocTypeID::LocalMemLocTy, addrSpace), AlocType(find64BitSuperReg(MI.getOperand(0).getReg())));
 
   return true;
 }
@@ -140,7 +139,8 @@ bool X86MachineInstructionRaiser::raisePopInstruction(const MachineInstr &MI) {
       return true;
     }
 #else
-    // add to vsa
+    printf("Unhandled VSA: \n"); fflush(stdout);
+    // MI.dump();
 
     return true;
 #endif
@@ -202,6 +202,8 @@ bool X86MachineInstructionRaiser::raiseConvertBWWDDQMachineInstr(
   // Update the value mapping of DefReg
   raisedValues->setPhysRegSSAValue(DefReg, MI.getParent()->getNumber(),
                                    SextInst);
+
+  printf("Sign extension instruction\n"); fflush(stdout);
   return true;
 }
 
@@ -278,7 +280,7 @@ bool X86MachineInstructionRaiser::raiseConvertWDDQQOMachineInstr(
   // Update the value mapping of DefReg_1
   raisedValues->setPhysRegSSAValue(DefReg1, MI.getParent()->getNumber(),
                                    HighBytesInst);
-
+  printf("Unhandled VSA: \n"); fflush(stdout);
   return true;
 }
 
@@ -323,6 +325,7 @@ bool X86MachineInstructionRaiser::raiseMoveImmToRegMachineInstr(
     // Update the value mapping of DstReg
     raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
                                      SrcValue);
+    valueSetAnalysis->assignValueConst(AlocType(find64BitSuperReg(DstPReg)), SrcValue);
     Success = true;
   } break;
   default:
@@ -441,6 +444,8 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
 
     // Update the value mapping of DstPReg
     raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, CInst);
+    printf("Unhandled VSA: \n"); fflush(stdout);
+    
     Success = true;
   } break;
   case X86::MOV64rr:
@@ -677,6 +682,7 @@ bool X86MachineInstructionRaiser::raiseMoveRegToRegMachineInstr(
 
       // Update the value mapping of DstPReg
       raisedValues->setPhysRegSSAValue(DstPReg, MBBNo, SI);
+      printf("Unhandled VSA: \n"); fflush(stdout);
     }
   } break;
   default:
@@ -791,6 +797,30 @@ bool X86MachineInstructionRaiser::raiseLEAMachineInstr(const MachineInstr &MI) {
   // Update the value mapping of DestReg
   raisedValues->setPhysRegSSAValue(DestReg, MI.getParent()->getNumber(),
                                    EffectiveAddrValue);
+
+  // Update the value set of the temp aloc to preserve value during operations
+  AlocType tempAloc = AlocType(Register(X86::NoRegister));
+  X86AddressMode addressMode = llvm::getAddressFromInstr(&MI, getMemoryRefOpIndex(MI));
+  
+  valueSetAnalysis->assignZeroRic(tempAloc);
+  if (addressMode.Disp != 0) {
+    valueSetAnalysis->adjustVS(tempAloc, addressMode.Disp);
+  }
+
+  if (addressMode.Base.Reg != X86::NoRegister) {
+    valueSetAnalysis->addValueWithSrc(tempAloc, 
+      AlocType(find64BitSuperReg(addressMode.Base.Reg)));
+  }
+
+  if (addressMode.IndexReg != X86::NoRegister) {
+    valueSetAnalysis->addValueWithSrcTimes(tempAloc, 
+      AlocType(find64BitSuperReg(addressMode.IndexReg)), 
+      addressMode.Scale);
+  }
+
+  AlocType destAloc = AlocType(find64BitSuperReg(DestReg));
+  valueSetAnalysis->assignValueToSrc(destAloc, tempAloc);
+
   return true;
 }
 
@@ -948,6 +978,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // Setting EFLAG bits does not seem to matter, so not setting
     // Set the DstReg value
     raisedValues->setPhysRegSSAValue(DstReg, MBBNo, DstValue);
+    printf("Unhandled VSA: \n"); fflush(stdout);
   } break;
   case X86::IMUL16r:
   case X86::IMUL32r:
@@ -1072,6 +1103,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::CF, MBBNo,
                                        ZFTest);
     }
+    printf("Unhandled VSA: \n"); fflush(stdout);
   } break;
   case X86::AND8rr:
   case X86::AND16rr:
@@ -1107,6 +1139,9 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       // Set PF knowing that the value is 0, since 0 has
       // an even number of bits set, namely, zero
       raisedValues->setEflagBoolean(EFLAGS::PF, MBBNo, true);
+
+      valueSetAnalysis->xorValueWithSrc(AlocType(find64BitSuperReg(DstReg)), 
+        AlocType(find64BitSuperReg(DstReg)));
     } else {
       Value *Src1Value = ExplicitSrcValues.at(0);
       Value *Src2Value = ExplicitSrcValues.at(1);
@@ -1146,6 +1181,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
       raisedValues->testAndSetEflagSSAValue(EFLAGS::SF, MI, DstValue);
       raisedValues->testAndSetEflagSSAValue(EFLAGS::ZF, MI, DstValue);
       raisedValues->testAndSetEflagSSAValue(EFLAGS::PF, MI, DstValue);
+      printf("Unhandled VSA: \n"); fflush(stdout);
     }
     // Clear OF and CF
     raisedValues->setEflagBoolean(EFLAGS::OF, MBBNo, false);
@@ -1212,6 +1248,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     raisedValues->testAndSetEflagSSAValue(EFLAGS::PF, MI, DstValue);
 
     raisedValues->setPhysRegSSAValue(DstReg, MBBNo, DstValue);
+    printf("Unhandled VSA: \n"); fflush(stdout);
   } break;
   case X86::NOT8r:
   case X86::NOT16r:
@@ -1236,6 +1273,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     DstValue = BinOpInst;
 
     raisedValues->setPhysRegSSAValue(DstReg, MBBNo, DstValue);
+    printf("Unhandled VSA: \n"); fflush(stdout);  
   } break;
   case X86::SAR8rCL:
   case X86::SAR16rCL:
@@ -1305,6 +1343,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
       raisedValues->setPhysRegSSAValue(DstReg, MBBNo, DstValue);
     }
+    printf("Unhandled VSA: \n"); fflush(stdout);
   } break;
   case X86::POPCNT16rr:
   case X86::POPCNT32rr:
@@ -1350,7 +1389,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     // ZF = (SrcValue==0).
     raisedValues->setPhysRegSSAValue(X86RegisterUtils::EFLAGS::ZF, MBBNo,
                                      ZFTest);
-
+    printf("Unhandled VSA: \n"); fflush(stdout);
   } break;
   case X86::SUBSSrr_Int:
   case X86::SUBSDrr_Int:
@@ -1419,6 +1458,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
     // Update the value of DstReg
     raisedValues->setPhysRegSSAValue(DstReg, MBBNo, DstValue);
+    printf("Unhandled VSA: \n"); fflush(stdout);
   } break;
   case X86::PANDrr:
   case X86::PANDNrr:
@@ -1515,6 +1555,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     }
 
     raisedValues->setPhysRegSSAValue(DstReg, MBBNo, DstValue);
+    printf("Unhandled VSA: \n"); fflush(stdout);
   } break;
   case X86::MAXSDrr_Int:
   case X86::MAXSSrr_Int:
@@ -1535,6 +1576,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
     DstReg = MI.getOperand(DestOpIndex).getReg();
     raisedValues->setPhysRegSSAValue(DstReg, MBBNo, SelectInst);
+    printf("Unhandled VSA: \n"); fflush(stdout);
   } break;
   case X86::SBB16rr:
   case X86::SBB32rr:
@@ -1558,6 +1600,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     raisedValues->setPhysRegSSAValue(DstReg, MBBNo, Result);
     raisedValues->testAndSetEflagSSAValue(EFLAGS::OF, MI, Result);
     raisedValues->testAndSetEflagSSAValue(EFLAGS::CF, MI, Result);
+    printf("Unhandled VSA: \n"); fflush(stdout);
   } break;
   case X86::SQRTSDr:
   case X86::SQRTSDr_Int:
@@ -1585,6 +1628,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
     DstReg = MI.getOperand(DestOpIndex).getReg();
     raisedValues->setPhysRegSSAValue(DstReg, MBBNo, Result);
+    printf("Unhandled VSA: \n"); fflush(stdout);
+
   } break;
   case X86::PADDBrr:
   case X86::PADDDrr:
@@ -1656,6 +1701,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
 
     // Update the value of DstReg
     raisedValues->setPhysRegSSAValue(DstReg, MBBNo, DstValue);
+    printf("Unhandled VSA: \n"); fflush(stdout);
+
   } break;
   case X86::PMAXSBrr:
   case X86::PMAXSDrr:
@@ -1745,6 +1792,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     raisedValues->setInstMetadataRODataIndex(Src1Value, (Instruction *)Result);
     // Update the value of DstReg
     raisedValues->setPhysRegSSAValue(DstReg, MBBNo, Result);
+    printf("Unhandled VSA: \n"); fflush(stdout);
   } break;
   case X86::UNPCKLPDrr:
   case X86::UNPCKLPSrr: {
@@ -1797,6 +1845,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpRegToRegMachineInstr(
     raisedValues->setInstMetadataRODataIndex(Src1Value, (Instruction *)Result);
     // Update the value of DstReg
     raisedValues->setPhysRegSSAValue(DstReg, MBBNo, Result);
+    printf("Unhandled VSA: \n"); fflush(stdout);
   } break;
   default:
     MI.dump();
@@ -2313,6 +2362,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMemToRegInstr(
   // Update PhysReg to Value map
   raisedValues->setPhysRegSSAValue(DestPReg, MI.getParent()->getNumber(),
                                    BinOpInst);
+  printf("Unhandled VSA: \n"); fflush(stdout);
   return true;
 }
 
@@ -2423,6 +2473,7 @@ bool X86MachineInstructionRaiser::raiseLoadIntToFloatRegInstr(
     pushFPURegisterStack(CInst);
   }
   }
+  printf("Unhandled VSA: \n"); fflush(stdout);
   return true;
 }
 
@@ -2531,6 +2582,7 @@ bool X86MachineInstructionRaiser::raiseStoreIntToFloatRegInstr(
     popFPURegisterStack();
   }
   }
+  printf("Unhandled VSA: \n"); fflush(stdout);
   return true;
 }
 
@@ -2697,24 +2749,43 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
   }
 
   AlocType srcAloc;
+  bool alocInitialized = false;
 
   if (isa<AllocaInst>(MemRefValue)) {
-    // printf("alloca\n");
+    // allocate on stack
     int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
     X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
     srcAloc = AlocType(AlocType::LocalMemLocTy, MemRef.Disp);
+    alocInitialized = true;
+    printf("hey there"); fflush(stdout);
   } else if (isEffectiveAddrValue(MemRefValue)) {
-
+    // Effective address
   } else if (isa<GlobalValue>(MemRefValue)) {
-
+    // Global value
+    int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
+    X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
+    srcAloc = AlocType(AlocType::GlobalMemLocTy, MemRef.Disp);
+    // init global variable before accessing it for the first time
+    GlobalVariable *gvar = dyn_cast<GlobalVariable>(MemRefValue);
+    if (gvar->isConstant()) {
+      // Check if constant values always have initializer
+      ConstantInt *intValue = dyn_cast<ConstantInt>(gvar->getInitializer());
+      valueSetAnalysis->tryInsertValue(srcAloc, intValue->getSExtValue());
+    }
+    alocInitialized = true;
   } else if (isa<SelectInst>(MemRefValue)) {
-
+    printf("select\n");
   } else if (isa<GetElementPtrInst>(MemRefValue)) {
+    printf("getelementptr\n");
 
   } else if (MemRefValue->getType()->isPointerTy()) {
-
-  }     
-  valueSetAnalysis->assignValueToSrc(AlocType(find64BitSuperReg(LoadPReg.id())), srcAloc);
+    printf("ptr\n");
+    // Find a way to link the ptr to the value
+  } 
+  
+  if (alocInitialized) {
+    valueSetAnalysis->assignValueToSrc(AlocType(find64BitSuperReg(LoadPReg)), srcAloc);
+  }
 
   return true;
 }
@@ -3006,31 +3077,37 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
   //         isa<GlobalValue>(MemRefVal) || isa<GetElementPtrInst>(MemRefVal) ||
   //         MemRefVal->getType()->isPointerTy()
   AlocType destAloc = AlocType();
+  bool alocInitialized = false;
   if (isa<AllocaInst>(MemRefVal)) {
     // local
     int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
     X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
     destAloc = AlocType(AlocType::LocalMemLocTy, MemRef.Disp);
-
+    alocInitialized = true;
   } else if (isEffectiveAddrValue(MemRefVal)) {
     // local
   } else if (isa<GlobalValue>(MemRefVal) || isa<GetElementPtrInst>(MemRefVal) ||
           MemRefVal->getType()->isPointerTy()) {
     // atid = AlocType::AlocTypeID::GlobalMemLocTy;
+    printf("move to ptr\n");
+    int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
+    X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
+    destAloc = AlocType(AlocType::GlobalMemLocTy, MemRef.Disp);
+    alocInitialized = true;
   } else {
     // atid = AlocType::AlocTypeID::RegisterTy;
   }
 
-  if (isa<Constant>(SrcValue)) {
-    // printf("%s\n", x86InstrInfo->getName(MI.getOpcode()));
-    valueSetAnalysis->assignValueConst(destAloc, SrcValue);
-  } else if (isa<Instruction>(SrcValue)) {
-    AlocType reg = AlocType(find64BitSuperReg(MI.getOperand(SrcOpIndex).getReg()));
-    // printf("Found a register MOV\n");
-    // printf("aloc type %d, aloc addr space %s\n", reg.getAlocTypeID(), x86RegisterInfo->getName(MI.getOperand(0).getReg()));
-    SrcValue->dump();
-    valueSetAnalysis->
-      assignValueToSrc(destAloc, reg);
+  if (alocInitialized) {
+    if (SrcOp.isImm()) {
+      valueSetAnalysis->assignValueConst(destAloc, SrcValue);
+    } else {
+      AlocType reg = AlocType(find64BitSuperReg(MI.getOperand(SrcOpIndex).getReg()));
+      // printf("Found a register MOV\n");
+      // printf("aloc type %d, aloc addr space %s\n", reg.getAlocTypeID(), x86RegisterInfo->getName(MI.getOperand(0).getReg()));
+      // SrcValue->dump();
+      valueSetAnalysis->assignValueToSrc(destAloc, reg);
+    }
   }
 
   return true;
@@ -3095,6 +3172,9 @@ bool X86MachineInstructionRaiser::raiseInplaceMemOpInstr(const MachineInstr &MI,
 
   // Store the result back in MemRefVal
   new StoreInst(SrcValue, MemRefVal, false, Align(MemOpSize), RaisedBB);
+
+  printf("Unhandled VSA: \n"); fflush(stdout);
+
   return true;
 }
 
@@ -3108,6 +3188,7 @@ bool X86MachineInstructionRaiser::raiseDivideFromMemInstr(
 
   Value *SrcValue =
       loadMemoryRefValue(MI, MemRefValue, MemoryRefOpIndex, DestopTy);
+  printf("Unhandled VSA: \n"); fflush(stdout);
   return raiseDivideInstr(MI, SrcValue);
 }
 
@@ -3261,7 +3342,7 @@ bool X86MachineInstructionRaiser::raiseDivideInstr(const MachineInstr &MI,
     raisedValues->setPhysRegSSAValue(UseDefReg1, MI.getParent()->getNumber(),
                                      Remainder);
   }
-
+  printf("Unhandled VSA: \n"); fflush(stdout);
   return true;
 }
 
@@ -3401,7 +3482,6 @@ bool X86MachineInstructionRaiser::raiseBitTestMachineInstr(
           DestOp.getReg(), MI.getParent()->getNumber(), WriteBackVal);
     }
   }
-
   return true;
 }
 
@@ -3640,6 +3720,7 @@ bool X86MachineInstructionRaiser::raiseCompareMachineInstr(
     default:
       assert(false && "Unhandled sub instruction found");
     }
+    printf("Unhandled VSA: \n"); fflush(stdout);
   }
   // Now update EFLAGS
   assert(MCIDesc.getNumImplicitDefs() == 1 &&
@@ -3895,6 +3976,7 @@ bool X86MachineInstructionRaiser::raiseSetCCMachineInstr(
 
     new StoreInst(StoreVal, MemoryRefValue, false, Align(), RaisedBB);
   }
+  printf("Unhandled VSA: \n"); fflush(stdout);
 
   return true;
 }
@@ -4038,6 +4120,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpMRIOrMRCEncodedMachineInstr(
   if (DstPReg != X86::NoRegister)
     raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
                                      BinOpInstr);
+  printf("Unhandled VSA: \n"); fflush(stdout);
   return Success;
 }
 
@@ -4110,6 +4193,7 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     assert((StackRefVal != nullptr) && "Reference to unallocated stack slot");
     raisedValues->setPhysRegSSAValue(X86::RSP, MI.getParent()->getNumber(),
                                      StackRefVal);
+    valueSetAnalysis->addValueWithImm(AlocType(X86::RSP), AdjSPRef.Disp);
   } else {
     // Values need to be discovered to form the appropriate instruction.
     Value *SrcOp1Value = nullptr;
@@ -4237,6 +4321,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     // EFLAGS that are affected by the result of the binary operation
     std::set<unsigned> AffectedEFlags;
 
+    bool valueSetHandled = false;
+
     switch (MI.getOpcode()) {
     case X86::ADD8i8:
     case X86::ADD16i16:
@@ -4260,6 +4346,8 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
 
       valueSetAnalysis->adjustVS(AlocType(find64BitSuperReg(DstPReg)), 
         dyn_cast<ConstantInt>(SrcOp2Value)->getSExtValue());
+      valueSetHandled = true;
+
     } break;
     case X86::SUB32i32:
     case X86::SUB32ri:
@@ -4274,6 +4362,11 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
       AffectedEFlags.insert(EFLAGS::CF);
       AffectedEFlags.insert(EFLAGS::OF);
       AffectedEFlags.insert(EFLAGS::PF);
+
+      valueSetAnalysis->addValueWithImmTimes(AlocType(find64BitSuperReg(DstPReg)), 
+        dyn_cast<ConstantInt>(SrcOp2Value)->getSExtValue(), -1);
+      valueSetHandled = true;
+
       break;
     case X86::AND8i8:
     case X86::AND8ri:
@@ -4531,6 +4624,11 @@ bool X86MachineInstructionRaiser::raiseBinaryOpImmToRegMachineInstr(
     if (DstPReg != X86::NoRegister)
       raisedValues->setPhysRegSSAValue(DstPReg, MI.getParent()->getNumber(),
                                        BinOpInstr);
+    
+
+    if (!valueSetHandled) {
+      printf("Unhandled VSA: \n"); fflush(stdout);
+    }
   }
   return true;
 }
@@ -4588,6 +4686,8 @@ bool X86MachineInstructionRaiser::raiseIndirectBranchMachineInstr(
     assert(false && "Support to raise indirect branches to non-jumptable "
                     "location not yet implemented");
   }
+  printf("Unhandled VSA: \n"); fflush(stdout);
+
   return true;
 }
 
@@ -4900,6 +5000,8 @@ bool X86MachineInstructionRaiser::raiseDirectBranchMachineInstr(
   } else {
     assert(false && "Unhandled type of branch instruction");
   }
+  printf("Unhandled VSA: \n"); fflush(stdout);
+  
   return true;
 }
 
@@ -5053,6 +5155,7 @@ bool X86MachineInstructionRaiser::raiseReturnMachineInstr(
           RaisedFunction, Type::getVoidTy(MF.getFunction().getContext()));
     }
   }
+  printf("Unhandled VSA: \n"); fflush(stdout);
 
   return true;
 }
@@ -5130,6 +5233,7 @@ bool X86MachineInstructionRaiser::raiseBranchMachineInstrs() {
   }
   LLVM_DEBUG(dbgs() << "CFG : After Raising Terminator Instructions\n");
   LLVM_DEBUG(RaisedFunction->dump());
+  printf("Unhandled VSA: \n"); fflush(stdout);
 
   return true;
 }
@@ -5190,6 +5294,7 @@ bool X86MachineInstructionRaiser::raiseFPURegisterOpInstr(
     assert(false && "Unhandled FPU instruction");
   } break;
   }
+  printf("Unhandled VSA: \n"); fflush(stdout);
 
   return true;
 }
@@ -5633,6 +5738,7 @@ bool X86MachineInstructionRaiser::raiseCallMachineInstr(
     assert(false && "Unhandled call instruction");
   } break;
   }
+  printf("Unhandled VSA: \n"); fflush(stdout);
 
   return Success;
 }
