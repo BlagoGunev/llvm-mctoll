@@ -49,6 +49,7 @@ bool X86ValueSetAnalysis::tryInsertValue(AlocType dest, int64_t value) {
 
 bool X86ValueSetAnalysis::assignValueToSrc(AlocType dest, AlocType src) {
   if (alocToVSMap.find(src) == alocToVSMap.end()) {
+    assignZeroRic(src);
     assignZeroRic(dest);
     return true;
   }
@@ -66,10 +67,7 @@ bool X86ValueSetAnalysis::assignValueConst(AlocType dest, Value *val) {
   int64_t value = 0;
   // TODO: check what value val is, for now just cast
   if (isa<ConstantInt>(val)) {
-    // val->getType()->print(outs());
     value = (dyn_cast<ConstantInt>(val))->getSExtValue();
-    // printf("Found an integer type %ld\n", value);
-    // fflush(stdout);
   }
   // int64_t value = 3;
   rrp.second = ReducedIntervalCongruence(1, 0, 0, value);
@@ -139,6 +137,32 @@ bool X86ValueSetAnalysis::addValueWithSrcTimes(AlocType dest, AlocType src, int6
   return true;
 }
 
+bool X86ValueSetAnalysis::addValueWithImm(AlocType dest, int64_t imm) {
+  return addValueWithImmTimes(dest, imm, 1);
+}
+
+bool X86ValueSetAnalysis::addValueWithImmTimes(AlocType dest, int64_t imm, int64_t times) {
+  
+  if (alocToVSMap.find(dest) == alocToVSMap.end()) {
+    assignZeroRic(dest);
+  }
+
+  if (times == 0) {
+    return true;
+  }
+
+  bool Success = true;
+  ValueSet *updatedVS = new ValueSet;
+  for (const RgnRICPair &ric : *(alocToVSMap[dest])) {
+    RgnRICPair newP = ric;
+    Success &= newP.second.adjustRIC(imm * times);
+    updatedVS->insert(newP);
+  }
+  alocToVSMap[dest] = updatedVS;
+
+  return Success;
+}
+
 bool X86ValueSetAnalysis::xorValueWithSrc(AlocType dest, AlocType src) {
   // Currently only implement the XOR with self
   if (dest == src) {
@@ -149,17 +173,18 @@ bool X86ValueSetAnalysis::xorValueWithSrc(AlocType dest, AlocType src) {
 }
 
 bool X86ValueSetAnalysis::adjustVS(AlocType dest, int64_t value) {
-  if (alocToVSMap.find(dest) == alocToVSMap.end()) {
-    alocToVSMap[dest] = new ValueSet;
-  }
-  ValueSet *updatedVS = new ValueSet;
-  for (const RgnRICPair &ric : *(alocToVSMap[dest])) {
-    RgnRICPair newP = ric;
-    newP.second.adjustRIC(value);
-    updatedVS->insert(newP);
-  }
-  alocToVSMap[dest] = updatedVS;
-  return true;
+  // if (alocToVSMap.find(dest) == alocToVSMap.end()) {
+  //   assignZeroRic(dest);
+  // }
+  // ValueSet *updatedVS = new ValueSet;
+  // for (const RgnRICPair &ric : *(alocToVSMap[dest])) {
+  //   RgnRICPair newP = ric;
+  //   newP.second.adjustRIC(value);
+  //   updatedVS->insert(newP);
+  // }
+  // alocToVSMap[dest] = updatedVS;
+  // return true;
+  return addValueWithImmTimes(dest, value, 1);
 }
 
 void dumpRic(const ReducedIntervalCongruence &ric) {

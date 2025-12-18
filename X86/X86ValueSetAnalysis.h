@@ -47,6 +47,8 @@ public:
   
   bool addValueWithSrc(AlocType dest, AlocType src);
   bool addValueWithSrcTimes(AlocType dest, AlocType src, int64_t times);
+  bool addValueWithImm(AlocType dest, int64_t imm);
+  bool addValueWithImmTimes(AlocType dest, int64_t imm, int64_t times);
   bool xorValueWithSrc(AlocType dest, AlocType src);
 
   bool containsValue(AlocType aloc, int64_t value);

@@ -86,6 +86,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <llvm/Transforms/Scalar.h>
 
 using namespace llvm;
 using namespace llvm::mctoll;
@@ -1330,8 +1331,14 @@ static void disassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
     PM.add(&TPC);
     PM.add(MachineModuleInfo);
 
+    // Add specific x86 Pass Value Set Analysis
+    // if (TheTriple.getArchName() == "x86_64")
+    //   PM.add(new ValueSetAliasingPass());
+
     // Add optimizations prior to emitting the output file.
     PM.add(new PeepholeOptimizationPass());
+
+    // PM.add(createDeadStoreEliminationPass());
 
     // Add print pass to emit ouptut file.
     PM.add(new EmitRaisedOutputPass(*OS, OutputFileType));
