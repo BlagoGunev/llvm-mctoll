@@ -114,8 +114,21 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &MI) {
   new StoreInst(RegValue, StackRef, RaisedBB);
 
   // TODO: Make memory ref relative to stack top
-  unsigned addrSpace = MR->getModule()->getDataLayout().getAllocaAddrSpace();
-  valueSetAnalysis->assignValueToSrc(AlocType(AlocType::AlocTypeID::LocalMemLocTy, addrSpace), AlocType(find64BitSuperReg(MI.getOperand(0).getReg())));
+  int64_t StackSlotSize =
+      static_cast<int64_t>(MR->getModule()->getDataLayout().getPointerSize());
+  valueSetAnalysis->addValueWithImm(AlocType(X86::RSP), -StackSlotSize);
+
+  int64_t RspOffset = 0;
+  AlocType SrcAloc = AlocType(find64BitSuperReg(MI.getOperand(0).getReg()));
+  if (valueSetAnalysis->getConstantValue(AlocType(X86::RSP), RspOffset)) {
+    valueSetAnalysis->assignValueToSrc(
+        AlocType(AlocType::AlocTypeID::LocalMemLocTy,
+                 static_cast<uint64_t>(RspOffset)),
+        SrcAloc);
+  } else {
+    valueSetAnalysis->assignValueToSrc(
+        AlocType(AlocType::AlocTypeID::LocalMemLocTy, 0), SrcAloc);
+  }
 
   return true;
 }
@@ -139,8 +152,20 @@ bool X86MachineInstructionRaiser::raisePopInstruction(const MachineInstr &MI) {
       return true;
     }
 #else
-    printf("Unhandled VSA: \n"); fflush(stdout);
-    // MI.dump();
+    int64_t StackSlotSize =
+        static_cast<int64_t>(MR->getModule()->getDataLayout().getPointerSize());
+
+    if (MI.getNumOperands() > 0 && MI.getOperand(0).isReg()) {
+      int64_t RspOffset = 0;
+      if (valueSetAnalysis->getConstantValue(AlocType(X86::RSP), RspOffset)) {
+        AlocType SrcMem(AlocType::LocalMemLocTy,
+                        static_cast<uint64_t>(RspOffset));
+        valueSetAnalysis->assignValueToSrc(
+            AlocType(find64BitSuperReg(MI.getOperand(0).getReg())), SrcMem);
+      }
+    }
+
+    valueSetAnalysis->addValueWithImm(AlocType(X86::RSP), StackSlotSize);
 
     return true;
 #endif
@@ -2755,7 +2780,21 @@ bool X86MachineInstructionRaiser::raiseMoveFromMemInstr(const MachineInstr &MI,
     // allocate on stack
     int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
     X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
-    srcAloc = AlocType(AlocType::LocalMemLocTy, MemRef.Disp);
+    int64_t EffectiveOffset = MemRef.Disp;
+    int64_t BaseOffset = 0;
+    int64_t IndexOffset = 0;
+    if (MemRef.Base.Reg != X86::NoRegister &&
+        valueSetAnalysis->getConstantValue(
+            AlocType(find64BitSuperReg(MemRef.Base.Reg)), BaseOffset)) {
+      EffectiveOffset += BaseOffset;
+    }
+    if (MemRef.IndexReg != X86::NoRegister &&
+        valueSetAnalysis->getConstantValue(
+            AlocType(find64BitSuperReg(MemRef.IndexReg)), IndexOffset)) {
+      EffectiveOffset += IndexOffset * MemRef.Scale;
+    }
+    srcAloc = AlocType(AlocType::LocalMemLocTy,
+                       static_cast<uint64_t>(EffectiveOffset));
     alocInitialized = true;
     printf("hey there"); fflush(stdout);
   } else if (isEffectiveAddrValue(MemRefValue)) {
@@ -3082,7 +3121,21 @@ bool X86MachineInstructionRaiser::raiseMoveToMemInstr(const MachineInstr &MI,
     // local
     int MemoryRefOpIndex = getMemoryRefOpIndex(MI);
     X86AddressMode MemRef = llvm::getAddressFromInstr(&MI, MemoryRefOpIndex);
-    destAloc = AlocType(AlocType::LocalMemLocTy, MemRef.Disp);
+    int64_t EffectiveOffset = MemRef.Disp;
+    int64_t BaseOffset = 0;
+    int64_t IndexOffset = 0;
+    if (MemRef.Base.Reg != X86::NoRegister &&
+        valueSetAnalysis->getConstantValue(
+            AlocType(find64BitSuperReg(MemRef.Base.Reg)), BaseOffset)) {
+      EffectiveOffset += BaseOffset;
+    }
+    if (MemRef.IndexReg != X86::NoRegister &&
+        valueSetAnalysis->getConstantValue(
+            AlocType(find64BitSuperReg(MemRef.IndexReg)), IndexOffset)) {
+      EffectiveOffset += IndexOffset * MemRef.Scale;
+    }
+    destAloc = AlocType(AlocType::LocalMemLocTy,
+                        static_cast<uint64_t>(EffectiveOffset));
     alocInitialized = true;
   } else if (isEffectiveAddrValue(MemRefVal)) {
     // local

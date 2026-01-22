@@ -172,6 +172,32 @@ bool X86ValueSetAnalysis::xorValueWithSrc(AlocType dest, AlocType src) {
   return false;
 }
 
+bool X86ValueSetAnalysis::getConstantValue(AlocType aloc, int64_t &value) const {
+  auto It = alocToVSMap.find(aloc);
+  if (It == alocToVSMap.end() || It->second == nullptr) {
+    return false;
+  }
+
+  if (It->second->size() != 1) {
+    return false;
+  }
+
+  const ReducedIntervalCongruence &RIC = It->second->begin()->second;
+  if (RIC.getLowerBoundState() != BoundState::SET ||
+      RIC.getUpperBoundState() != BoundState::SET) {
+    return false;
+  }
+
+  if (RIC.getIndexLowerBound() != RIC.getIndexUpperBound()) {
+    return false;
+  }
+
+  value = RIC.getOffset() +
+          static_cast<int64_t>(RIC.getAlignment()) *
+              RIC.getIndexLowerBound();
+  return true;
+}
+
 bool X86ValueSetAnalysis::adjustVS(AlocType dest, int64_t value) {
   // if (alocToVSMap.find(dest) == alocToVSMap.end()) {
   //   assignZeroRic(dest);

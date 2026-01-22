@@ -52,6 +52,7 @@ public:
   bool xorValueWithSrc(AlocType dest, AlocType src);
 
   bool containsValue(AlocType aloc, int64_t value);
+  bool getConstantValue(AlocType aloc, int64_t &value) const;
   bool isSubsetOf(ValueSet *left, ValueSet *right);
   ValueSet *intersectionVS(ValueSet *left, ValueSet *right);
   ValueSet *unionVS(ValueSet *left, ValueSet *right);
