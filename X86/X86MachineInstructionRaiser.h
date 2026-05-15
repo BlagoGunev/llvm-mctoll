@@ -17,6 +17,8 @@
 #include "Raiser/MachineInstructionRaiser.h"
 #include "X86AdditionalInstrInfo.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/MDBuilder.h"
+#include "llvm/IR/Metadata.h"
 
 namespace llvm {
 
@@ -81,6 +83,9 @@ private:
   X86RaisedValueTracker *raisedValues;
 
   X86ValueSetAnalysis *valueSetAnalysis;
+
+  MDBuilder *MDB;
+  MDNode *Domain;
 
   // Set of reaching definitions that were not promoted during since defining
   // block is not yet raised and need to be promoted upon raising all blocks.

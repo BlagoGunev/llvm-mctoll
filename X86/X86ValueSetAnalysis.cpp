@@ -27,7 +27,7 @@ X86ValueSetAnalysis::X86ValueSetAnalysis(
 
 void X86ValueSetAnalysis::assignZeroRic(AlocType dest) {
   alocToVSMap[dest] = new ValueSet;
-  pair<MemRgnType, ReducedIntervalCongruence> p;
+  RgnRICPair p;
   p.first = 0;
   p.second = ReducedIntervalCongruence();
   alocToVSMap[dest]->insert(p);
@@ -40,7 +40,7 @@ bool X86ValueSetAnalysis::tryInsertValue(AlocType dest, int64_t value) {
   }
   printf("Inserted\n");
   alocToVSMap[dest] = new ValueSet;
-  pair<MemRgnType, ReducedIntervalCongruence> p;
+  RgnRICPair p;
   p.first = 0;
   p.second = ReducedIntervalCongruence(1, 0, 0, value);
   alocToVSMap[dest]->insert(p);

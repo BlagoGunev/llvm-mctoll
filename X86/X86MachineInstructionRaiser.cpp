@@ -63,6 +63,8 @@ X86MachineInstructionRaiser::X86MachineInstructionRaiser(MachineFunction &MF,
 
   raisedValues = nullptr;
   valueSetAnalysis = nullptr;
+  MDB = nullptr;
+  Domain = nullptr;
 }
 
 bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &MI) {
@@ -111,7 +113,9 @@ bool X86MachineInstructionRaiser::raisePushInstruction(const MachineInstr &MI) {
   RegValue = getRaisedValues()->castValue(RegValue, StackRefElemTy, RaisedBB);
 
   // Store operand at stack top (StackRef)
-  new StoreInst(RegValue, StackRef, RaisedBB);
+  StoreInst *Store = new StoreInst(RegValue, StackRef, RaisedBB);
+  MDNode *Scope = MDB->createAnonymousAliasScope(Domain, "store");
+  Store->setMetadata(LLVMContext::MD_alias_scope, Scope);
 
   // TODO: Make memory ref relative to stack top
   int64_t StackSlotSize =
@@ -5825,6 +5829,8 @@ bool X86MachineInstructionRaiser::raiseMachineFunction() {
 
   // Initialize the value set analysis class.
   valueSetAnalysis = new X86ValueSetAnalysis(this);
+  MDB = new MDBuilder(Ctx);
+  Domain = MDB->createAnonymousAliasScopeDomain(CurFunction->getName());
 
   Value *Zero64BitValue =
       ConstantInt::get(Type::getInt64Ty(Ctx), 0, false /* isSigned */);
